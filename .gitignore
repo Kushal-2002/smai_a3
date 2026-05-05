@@ -1,0 +1,22 @@
+# Model weights — hosted on HuggingFace Hub instead
+indic_bert_bengali_sentiment/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+*.pdf
+*.synctex.gz
+
+# OS
+.DS_Store

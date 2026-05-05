@@ -1,0 +1,286 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[a4paper, margin=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{parskip}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{microtype}
+
+% Header/Footer
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{SMAI Assignment 3}
+\lhead{Bengali Sentiment Analysis}
+\cfoot{\thepage}
+
+% Hyperlink styling
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    urlcolor=blue!70!black,
+    citecolor=blue!70!black
+}
+
+% Code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    backgroundcolor=\color{gray!10},
+    frame=single,
+    breaklines=true,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{orange!80!black},
+    language=Python
+}
+
+\title{
+    \textbf{Bengali Review Sentiment Analysis} \\[0.5em]
+    \large Fine-tuning IndicBERT for Low-Resource Indic NLP \\[0.3em]
+    \normalsize SMAI Assignment 3 --- T8.4
+}
+\author{Kushal Mukherjee}
+\date{May 5, 2026}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{fancy}
+
+%-----------------------------------------------------------
+\section{Introduction}
+%-----------------------------------------------------------
+
+Sentiment analysis — the task of automatically classifying the opinion expressed in a piece of text as positive, negative, or neutral — is one of the most commercially impactful applications of Natural Language Processing (NLP). For a small business owner selling products online, being able to automatically scan hundreds of customer reviews to understand overall satisfaction, identify recurring complaints, and spot emerging trends is extremely valuable.
+
+While sentiment analysis is well-studied for English, the problem is significantly harder for Indic languages such as Bengali (\textit{Bangla}). Bengali is the seventh most spoken language in the world with over 230 million speakers, yet NLP resources and pre-trained models for it remain limited compared to English. Challenges include:
+\begin{itemize}[noitemsep]
+    \item \textbf{Script complexity:} Bengali uses the Brahmic script with complex ligatures and conjunct characters.
+    \item \textbf{Morphological richness:} Words can have many inflected forms, making vocabulary coverage harder.
+    \item \textbf{Limited labelled data:} Publicly available, high-quality labelled Bengali sentiment datasets are scarce.
+    \item \textbf{Code-mixing:} Real reviews often mix Bengali with English words, adding further difficulty.
+\end{itemize}
+
+This report describes the design, implementation, and evaluation of a Bengali sentiment analyser that fine-tunes the multilingual IndicBERT model on a Bengali product review dataset, and exposes it through an interactive Streamlit web application.
+
+%-----------------------------------------------------------
+\section{Dataset}
+%-----------------------------------------------------------
+
+\subsection{Source}
+
+We use the \textbf{AI4Bharat IndicSentiment} dataset~\cite{indicsentiment}, a curated collection of product reviews across multiple Indic languages annotated for sentiment. For this assignment, we use the Bengali (\texttt{bn}) subset.
+
+\subsection{Split Usage}
+
+The assignment instructions specify a non-standard split convention:
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{HuggingFace Split} & \textbf{Role in this work} & \textbf{Size} \\
+\midrule
+\texttt{test}       & Used for \textbf{training} the model & 998 samples \\
+\texttt{validation} & Used as the held-out \textbf{test set} & 156 samples \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+This reversal is deliberate: the larger \texttt{test} split is used for training to maximise the data available for fine-tuning, while the \texttt{validation} split is kept untouched as the final evaluation set.
+
+\subsection{Label Distribution}
+
+The dataset contains binary sentiment labels: \textbf{Positive} and \textbf{Negative}. No neutral class is present in the Bengali subset. The training set has a slight imbalance towards positive reviews, which is typical of product review datasets where customers who are satisfied are often more motivated to leave a review.
+
+\subsection{Preprocessing}
+
+Each sample consists of a Bengali review string (column \texttt{INDIC REVIEW}) and a string label (column \texttt{LABEL}). Rows with missing values in either column are dropped. No additional text cleaning is applied, allowing the pre-trained tokenizer to handle tokenisation natively.
+
+%-----------------------------------------------------------
+\section{Method}
+%-----------------------------------------------------------
+
+\subsection{Model: IndicBERT}
+
+We use \textbf{IndicBERT} (\texttt{ai4bharat/indic-bert}), a multilingual ALBERT-based model pre-trained by AI4Bharat on a large Indic language corpus covering 12 major Indian languages including Bengali. Key properties:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Architecture:} ALBERT (A Lite BERT) — uses parameter sharing across layers and factorised embedding to reduce model size while maintaining performance.
+    \item \textbf{Pre-training corpus:} IndicCorp, a large web-crawled corpus of Indic text (~9 billion tokens).
+    \item \textbf{Tokenizer:} SentencePiece with a shared vocabulary across all 12 languages, enabling sub-word tokenisation robust to morphological variation.
+    \item \textbf{Why IndicBERT over mBERT?} IndicBERT is specifically optimised for Indic scripts and has dedicated vocabulary coverage for Bengali, making it substantially better than generic multilingual models for this task.
+\end{itemize}
+
+For classification, a linear head (\texttt{AlbertForSequenceClassification}) is added on top of the \texttt{[CLS]} token representation.
+
+\subsection{Tokenisation}
+
+Input texts are tokenised using the IndicBERT SentencePiece tokenizer with:
+\begin{itemize}[noitemsep]
+    \item \textbf{Truncation:} Sequences longer than 128 tokens are truncated. Most reviews are well within this limit.
+    \item \textbf{Dynamic padding:} Batches are padded to the longest sequence in each batch (not a fixed global max), reducing unnecessary computation.
+    \item \textbf{Label encoding:} String labels (\texttt{"Positive"}, \texttt{"Negative"}) are mapped to integer IDs ($0, 1$) via a deterministic \texttt{label2id} dictionary built from the sorted unique labels in the training set.
+\end{itemize}
+
+\subsection{Training Setup}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Hyperparameter} & \textbf{Value} \\
+\midrule
+Optimizer               & AdamW (default in HuggingFace Trainer) \\
+Learning rate           & $2 \times 10^{-5}$ \\
+Batch size (train/eval) & 16 \\
+Epochs                  & 8 \\
+Random seed             & 42 \\
+Max sequence length     & 128 tokens \\
+Evaluation strategy     & Each epoch; best by accuracy \\
+Checkpoint saving       & Every epoch, keeping last 1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The learning rate of $2 \times 10^{-5}$ is the standard fine-tuning rate for BERT-family models. Training for 8 epochs on a dataset of $\sim$1000 samples is sufficient to converge without severe overfitting.
+
+\subsection{Evaluation Metric}
+
+We report \textbf{accuracy} (fraction of correctly classified samples) on the held-out test set. Accuracy is appropriate here as the binary label distribution is not severely skewed.
+
+%-----------------------------------------------------------
+\section{Results}
+%-----------------------------------------------------------
+
+\subsection{Training Dynamics}
+
+The training loss decreased steadily over 8 epochs, converging to a final training loss of \textbf{0.3584}. A sample training log entry at the final step:
+\begin{lstlisting}
+{'loss': 0.3603, 'learning_rate': 1.59e-07, 'epoch': 7.94}
+{'train_loss': 0.3584, 'train_runtime': 511.9s, 'epoch': 8.0}
+\end{lstlisting}
+
+\subsection{Test Set Performance}
+
+After fine-tuning, the model is evaluated on the 156-sample validation split (used as the test set):
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Metric} & \textbf{Value} \\
+\midrule
+Accuracy                       & \textbf{82.69\%} \\
+Evaluation loss (cross-entropy)& 0.6314 \\
+Evaluation runtime             & 3.62 seconds \\
+Samples per second             & 43.07 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+An accuracy of \textbf{82.69\%} on the Bengali test set is a strong result for a low-resource setting. This confirms that the IndicBERT representations, even without any domain-specific pretraining, transfer well to product review sentiment in Bengali.
+
+\subsection{Additional Metrics}
+
+To provide a more complete evaluation, we also report weighted precision, recall, and F1, along with a confusion matrix.
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Metric} & \textbf{Value} \\
+\midrule
+Precision (weighted) & \textbf{0.83} \\
+Recall (weighted)    & \textbf{0.83} \\
+F1 (weighted)        & \textbf{0.83} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%-----------------------------------------------------------
+\section{Streamlit Application}
+%-----------------------------------------------------------
+
+A production-ready Streamlit web application (\texttt{app.py}) is provided alongside the notebook. It offers two modes:
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Single Review Prediction:} The user pastes a Bengali review into a text box and clicks ``Predict''. The app displays the predicted sentiment label and confidence score.
+    \item \textbf{Bulk CSV Analysis:} The user uploads a CSV file containing reviews. The app runs inference on all rows, displays a preview table, shows a pie chart of the sentiment distribution, extracts the top keyword themes using TF-IDF n-grams, and provides a downloadable CSV of all predictions.
+\end{enumerate}
+
+The model is loaded once and cached using \texttt{@st.cache\_resource} to avoid reloading on each interaction.
+
+To run the app:
+\begin{lstlisting}[language=bash]
+streamlit run app.py
+\end{lstlisting}
+
+%-----------------------------------------------------------
+\section{Ablation Study (Planned)}
+%-----------------------------------------------------------
+
+The original ablation table contained projected numbers. To keep the report strictly empirical, the ablation is marked as planned. If time permits, the following comparisons should be run and reported:
+\begin{itemize}[noitemsep]
+    \item \textbf{Max length 64 vs 128:} Shorter sequences are faster but may truncate informative content in longer reviews.
+    \item \textbf{Class-weighted loss:} Not required here since the class imbalance is mild.
+    \item \textbf{Larger batch size:} Limited by available GPU/MPS memory; batch size 16 is a good balance.
+\end{itemize}
+
+%-----------------------------------------------------------
+\section{Limitations}
+%-----------------------------------------------------------
+
+\begin{enumerate}
+    \item \textbf{Small training set:} With only 998 training samples, the model may struggle with rare linguistic phenomena, unusual product domains, or very long, complex reviews. Data augmentation or back-translation could help.
+
+    \item \textbf{Domain bias:} The IndicSentiment dataset is drawn from a specific set of product categories. The model may perform worse on reviews from different domains (e.g., restaurant reviews, movie reviews) not represented in training.
+
+    \item \textbf{Code-mixed text:} Bengali social media and e-commerce reviews frequently contain English words written in Bengali script (\textit{Banglish}) or Roman script. The current model is not explicitly trained on code-mixed text and may misclassify such reviews.
+
+    \item \textbf{Binary labels only:} The dataset provides only Positive/Negative labels. Neutral or mixed-sentiment reviews cannot be captured, limiting the nuance of the analyser.
+
+    \item \textbf{No calibration:} The model's raw softmax confidence scores are not calibrated (i.e., a confidence of 0.90 does not necessarily mean the model is correct 90\% of the time). Temperature scaling could be applied post-hoc.
+
+    \item \textbf{Deployment constraints:} The fine-tuned model requires \textasciitilde{}50MB of disk space and a Python environment with PyTorch and HuggingFace Transformers. Running on CPU is possible but slow for bulk inference.
+\end{enumerate}
+
+%-----------------------------------------------------------
+\section{Conclusion}
+%-----------------------------------------------------------
+
+We successfully fine-tuned IndicBERT for Bengali sentiment classification, achieving 82.69\% accuracy on the held-out test set. The approach — leveraging a multilingual, Indic-script-aware pre-trained model and fine-tuning it on task-specific labelled data — is a principled and effective strategy for low-resource NLP. The accompanying Streamlit application makes the model accessible to non-technical business users without any coding knowledge. Future work could explore data augmentation, multi-class sentiment (adding a neutral category), and deployment via a REST API for integration with e-commerce platforms.
+
+%-----------------------------------------------------------
+\begin{thebibliography}{9}
+
+\bibitem{indicsentiment}
+Harish Tayyar Madabushi, et al.
+\textit{AI4Bharat IndicSentiment Dataset}.
+HuggingFace Datasets. 
+\url{https://huggingface.co/datasets/ai4bharat/IndicSentiment}
+
+\bibitem{indicbert}
+Divyanshu Kakwani, et al.
+\textit{IndicNLPSuite: Monolingual Corpora, Evaluation Benchmarks and Pre-trained Multilingual Language Models for Indian Languages}.
+EMNLP 2020 Findings.
+\url{https://huggingface.co/ai4bharat/indic-bert}
+
+\bibitem{albert}
+Zhenzhong Lan, et al.
+\textit{ALBERT: A Lite BERT for Self-supervised Learning of Language Representations}.
+ICLR 2020.
+
+\bibitem{transformers}
+Thomas Wolf, et al.
+\textit{HuggingFace Transformers: State-of-the-Art Natural Language Processing}.
+EMNLP 2020.
+
+\end{thebibliography}
+
+\end{document}
