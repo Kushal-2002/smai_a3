@@ -1,11 +1,13 @@
 
+import os
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import CountVectorizer
 from transformers import pipeline
 
-MODEL_DIR = "./indic_bert_bengali_sentiment"
+_LOCAL_MODEL = os.path.join(os.path.dirname(__file__), "indic_bert_bengali_sentiment")
+MODEL_DIR = _LOCAL_MODEL if os.path.isdir(_LOCAL_MODEL) else "k040902/bengali_book_review_sentiment"
 st.set_page_config(page_title="Bengali Sentiment Analyzer", layout="wide")
 st.title("Bengali Review Sentiment Analyzer")
 
