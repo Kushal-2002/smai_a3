@@ -21,7 +21,7 @@
 \pagestyle{fancy}
 \fancyhf{}
 \rhead{SMAI Assignment 3}
-\lhead{Bengali Sentiment Analysis}
+\lhead{Bengali Book Review Sentiment}
 \cfoot{\thepage}
 
 % Hyperlink styling
@@ -45,13 +45,17 @@
 }
 
 \title{
-    \textbf{Bengali Review Sentiment Analysis} \\[0.5em]
+    \textbf{Bengali Book Review Sentiment Analysis} \\[0.5em]
     \large Fine-tuning IndicBERT for Low-Resource Indic NLP \\[0.3em]
     \normalsize SMAI Assignment 3 --- T8.4
 }
 \author{Souradeep Das (2025201004) \\
+\texttt{souradeep.das@students.iiit.ac.in} \\
 Kushal Mukherjee (2025201072) \\
-Monalisa Sarkar (2024801018)}
+\texttt{kushal.mukherjee@students.iiit.ac.in} \\
+Monalisa Sarkar (2024801018) \\
+\texttt{monalisa.sarkar@research.iiit.ac.in} \\
+\textit{Team: Axiom AI}}
 \date{May 5, 2026}
 
 \begin{document}
@@ -66,7 +70,7 @@ Model on Hugging Face: \url{https://huggingface.co/k040902/bengali_book_review_s
 \section{Introduction}
 %-----------------------------------------------------------
 
-Sentiment analysis — the task of automatically classifying the opinion expressed in a piece of text as positive, negative, or neutral — is one of the most commercially impactful applications of Natural Language Processing (NLP). For a small business owner selling products online, being able to automatically scan hundreds of customer reviews to understand overall satisfaction, identify recurring complaints, and spot emerging trends is extremely valuable.
+Sentiment analysis — the task of automatically classifying the opinion expressed in a piece of text as positive, negative, or neutral — is one of the most practical applications of Natural Language Processing (NLP). For readers, authors, and publishers, being able to automatically summarize large volumes of Bengali book reviews helps track reader reception, identify recurring themes, and surface strengths or weaknesses across titles.
 
 While sentiment analysis is well-studied for English, the problem is significantly harder for Indic languages such as Bengali (\textit{Bangla}). Bengali is the seventh most spoken language in the world with over 230 million speakers, yet NLP resources and pre-trained models for it remain limited compared to English. Challenges include:
 \begin{itemize}[noitemsep]
@@ -76,7 +80,7 @@ While sentiment analysis is well-studied for English, the problem is significant
     \item \textbf{Code-mixing:} Real reviews often mix Bengali with English words, adding further difficulty.
 \end{itemize}
 
-This report describes the design, implementation, and evaluation of a Bengali sentiment analyser that fine-tunes the multilingual IndicBERT model on a Bengali product review dataset, and exposes it through an interactive Streamlit web application.
+This report describes the design, implementation, and evaluation of a Bengali sentiment analyser for book reviews that fine-tunes the multilingual IndicBERT model on Bengali review data, and exposes it through an interactive Streamlit web application.
 
 %-----------------------------------------------------------
 \section{Dataset}
@@ -84,7 +88,7 @@ This report describes the design, implementation, and evaluation of a Bengali se
 
 \subsection{Source}
 
-We use the \textbf{AI4Bharat IndicSentiment} dataset~\cite{indicsentiment}, a curated collection of product reviews across multiple Indic languages annotated for sentiment. For this assignment, we use the Bengali (\texttt{bn}) subset.
+We use the \textbf{AI4Bharat IndicSentiment} dataset~\cite{indicsentiment}, a curated collection of Bengali reviews annotated for sentiment. For this assignment, we use the Bengali (\texttt{bn}) subset.
 
 \subsection{Split Usage}
 
@@ -104,7 +108,7 @@ This reversal is deliberate: the larger \texttt{test} split is used for training
 
 \subsection{Label Distribution}
 
-The dataset contains binary sentiment labels: \textbf{Positive} and \textbf{Negative}. No neutral class is present in the Bengali subset. The training set has a slight imbalance towards positive reviews, which is typical of product review datasets where customers who are satisfied are often more motivated to leave a review.
+The dataset contains binary sentiment labels: \textbf{Positive} and \textbf{Negative}. No neutral class is present in the Bengali subset. The training set has a slight imbalance towards positive reviews, which is typical of review datasets where satisfied readers are often more motivated to leave feedback.
 
 \subsection{Preprocessing}
 
@@ -190,11 +194,37 @@ Samples per second             & 43.07 \\
 \end{tabular}
 \end{center}
 
-An accuracy of \textbf{82.69\%} on the Bengali test set is a strong result for a low-resource setting. This confirms that the IndicBERT representations, even without any domain-specific pretraining, transfer well to product review sentiment in Bengali.
+An accuracy of \textbf{82.69\%} on the Bengali test set is a strong result for a low-resource setting. This confirms that the IndicBERT representations, even without any domain-specific pretraining, transfer well to Bengali review sentiment.
 
 \subsection{Additional Metrics}
 
-To provide a more complete evaluation, we also report weighted precision, recall, and F1, along with a confusion matrix.
+To provide a more complete evaluation, we report weighted precision, recall, and F1, along with the confusion matrix and full classification report.
+
+\subsubsection{Confusion Matrix}
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+\textbf{True \textbackslash{} Pred} & \textbf{Negative} & \textbf{Positive} \\
+\midrule
+\textbf{Negative} & 68 & 13 \\
+\textbf{Positive} & 14 & 61 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Classification Report}
+
+\begin{lstlisting}
+                  precision    recall  f1-score   support
+
+     Negative       0.83      0.84      0.83        81
+     Positive       0.82      0.81      0.82        75
+
+     accuracy                           0.83       156
+    macro avg       0.83      0.83      0.83       156
+weighted avg       0.83      0.83      0.83       156
+\end{lstlisting}
 
 \begin{center}
 \begin{tabular}{ll}
@@ -226,6 +256,26 @@ To run the app:
 streamlit run app.py
 \end{lstlisting}
 
+\subsection{App Screenshots}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\linewidth]{single_review.png}
+    \caption{Single review prediction interface.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\linewidth]{bulk_review.png}
+    \caption{Bulk CSV analysis workflow.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\linewidth]{pie.png}
+    \caption{Sentiment distribution pie chart from bulk analysis.}
+\end{figure}
+
 %-----------------------------------------------------------
 \section{Ablation Study (Planned)}
 %-----------------------------------------------------------
@@ -242,11 +292,11 @@ The original ablation table contained projected numbers. To keep the report stri
 %-----------------------------------------------------------
 
 \begin{enumerate}
-    \item \textbf{Small training set:} With only 998 training samples, the model may struggle with rare linguistic phenomena, unusual product domains, or very long, complex reviews. Data augmentation or back-translation could help.
+    \item \textbf{Small training set:} With only 998 training samples, the model may struggle with rare linguistic phenomena, niche book genres, or very long, complex reviews. Data augmentation or back-translation could help.
 
-    \item \textbf{Domain bias:} The IndicSentiment dataset is drawn from a specific set of product categories. The model may perform worse on reviews from different domains (e.g., restaurant reviews, movie reviews) not represented in training.
+    \item \textbf{Domain bias:} The IndicSentiment dataset represents a specific review distribution. The model may perform worse on other Bengali review domains or genres not represented in training.
 
-    \item \textbf{Code-mixed text:} Bengali social media and e-commerce reviews frequently contain English words written in Bengali script (\textit{Banglish}) or Roman script. The current model is not explicitly trained on code-mixed text and may misclassify such reviews.
+    \item \textbf{Code-mixed text:} Bengali reviews frequently contain English words written in Bengali script (\textit{Banglish}) or Roman script. The current model is not explicitly trained on code-mixed text and may misclassify such reviews.
 
     \item \textbf{Binary labels only:} The dataset provides only Positive/Negative labels. Neutral or mixed-sentiment reviews cannot be captured, limiting the nuance of the analyser.
 
@@ -259,7 +309,7 @@ The original ablation table contained projected numbers. To keep the report stri
 \section{Conclusion}
 %-----------------------------------------------------------
 
-We successfully fine-tuned IndicBERT for Bengali sentiment classification, achieving 82.69\% accuracy on the held-out test set. The approach — leveraging a multilingual, Indic-script-aware pre-trained model and fine-tuning it on task-specific labelled data — is a principled and effective strategy for low-resource NLP. The accompanying Streamlit application makes the model accessible to non-technical business users without any coding knowledge. Future work could explore data augmentation, multi-class sentiment (adding a neutral category), and deployment via a REST API for integration with e-commerce platforms.
+We successfully fine-tuned IndicBERT for Bengali book review sentiment classification, achieving 82.69\% accuracy on the held-out test set. The approach — leveraging a multilingual, Indic-script-aware pre-trained model and fine-tuning it on task-specific labelled data — is a principled and effective strategy for low-resource NLP. The accompanying Streamlit application makes the model accessible to non-technical users without any coding knowledge. Future work could explore data augmentation, multi-class sentiment (adding a neutral category), and deployment via a REST API for wider integration.
 
 %-----------------------------------------------------------
 \begin{thebibliography}{9}
